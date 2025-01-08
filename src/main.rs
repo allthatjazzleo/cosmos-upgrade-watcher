@@ -150,7 +150,6 @@ async fn fetch_and_update_metrics(
 mod tests {
     use super::*;
     use chrono::Duration;
-    use mockito::mock;
 
     #[tokio::test]
     async fn test_add_update_metrics() {
@@ -184,7 +183,9 @@ mod tests {
             block: 12345,
         };
 
-        let _m = mock("GET", "/")
+        let mut server = mockito::Server::new_async().await;
+
+        server.mock("GET", "/")
             .with_status(200)
             .with_header("content-type", "application/json")
             .with_body(format!(
@@ -202,7 +203,7 @@ mod tests {
 
         fetch_and_update_metrics(
             &Client::new(),
-            &mockito::server_url(),
+            &server.url(),
             &watch_list,
             &gauge,
             &upgrades,

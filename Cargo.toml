@@ -3,6 +3,9 @@ name = "cosmos-upgrade-watcher"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "cosmos-upgrade-watcher"
+
 [dependencies]
 reqwest = { version = "0.12", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -12,8 +15,8 @@ tokio = { version = "1", features = ["full"] }
 prometheus = "0.13"
 warp = "0.3"
 humantime = "2.1"
-clap = { version = "3.0", features = ["derive"] }
+clap = { version = "4.5", features = ["derive"] }
 chrono = "0.4.39"
 
 [dev-dependencies]
-mockito = "0.31"
+mockito = "1.6"
