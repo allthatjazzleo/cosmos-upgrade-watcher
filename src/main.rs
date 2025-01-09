@@ -8,8 +8,6 @@ use reqwest::Client;
 use serde::Deserialize;
 use std::collections::HashSet;
 use std::net::IpAddr;
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use tokio::time::interval;
 use warp::Filter;
 
@@ -49,9 +47,8 @@ async fn main() {
     let watch_list: Vec<String> = config.chain.watch_list.clone();
     let refresh_interval = humantime::parse_duration(&config.chain.refresh).unwrap();
 
-    let upgrades: Arc<Mutex<HashSet<ChainUpgrade>>> = Arc::new(Mutex::new(HashSet::new()));
+    let mut upgrades: HashSet<ChainUpgrade> = HashSet::new();
 
-    let upgrades_clone = Arc::clone(&upgrades);
     let client_clone = client.clone();
     let gauge_clone = gauge.clone();
     let watch_list_clone = watch_list.clone();
@@ -66,7 +63,7 @@ async fn main() {
                 &endpoint_clone,
                 &watch_list_clone,
                 &gauge_clone,
-                &upgrades_clone,
+                &mut upgrades,
             )
             .await
             {
@@ -99,7 +96,7 @@ async fn fetch_and_update_metrics(
     endpoint: &str,
     watch_list: &[String],
     gauge: &IntGaugeVec,
-    upgrades: &Arc<Mutex<HashSet<ChainUpgrade>>>,
+    upgrades: &mut HashSet<ChainUpgrade>,
 ) -> Result<(), reqwest::Error> {
     let response = client
         .get(endpoint)
@@ -108,7 +105,6 @@ async fn fetch_and_update_metrics(
         .json::<Vec<ChainUpgrade>>()
         .await?;
     let now = Utc::now();
-    let mut upgrades_guard = upgrades.lock().await;
 
     // Add or update metrics
     for upgrade in &response {
@@ -123,13 +119,13 @@ async fn fetch_and_update_metrics(
                         &upgrade.block.to_string(),
                     ])
                     .set(1);
-                upgrades_guard.insert(upgrade.clone());
+                upgrades.insert(upgrade.clone());
             }
         }
     }
 
     // Remove expired metrics
-    upgrades_guard.retain(|upgrade| {
+    upgrades.retain(|upgrade| {
         let upgrade_time = DateTime::parse_from_rfc3339(&upgrade.estimated_upgrade_time).unwrap();
         if now >= upgrade_time {
             let _ = gauge.remove_label_values(&[
@@ -160,7 +156,7 @@ mod tests {
         )
         .unwrap();
 
-        let upgrades: Arc<Mutex<HashSet<ChainUpgrade>>> = Arc::new(Mutex::new(HashSet::new()));
+        let mut upgrades: HashSet<ChainUpgrade> = HashSet::new();
         let watch_list = vec!["testnet".to_string()];
 
         let now = Utc::now();
@@ -195,18 +191,15 @@ mod tests {
             ))
             .create();
 
-        {
-            let mut upgrades_guard = upgrades.lock().await;
-            upgrades_guard.insert(upgrade_future.clone());
-            upgrades_guard.insert(upgrade_past.clone());
-        }
+        upgrades.insert(upgrade_future.clone());
+        upgrades.insert(upgrade_past.clone());
 
         fetch_and_update_metrics(
             &Client::new(),
             &server.url(),
             &watch_list,
             &gauge,
-            &upgrades,
+            &mut upgrades,
         )
         .await
         .unwrap();
